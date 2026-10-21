@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forklift-migration-console-config
+data:
+  APP_MODE: cluster
+  FORKLIFT_NAMESPACE: konveyor-forklift
+  KUBERNETES_API_URL: https://kubernetes.default.svc
+  INVENTORY_API_URL: https://forklift-inventory.konveyor-forklift.svc:8443
+  INVENTORY_ENABLED: "true"
+  DEFAULT_STORAGE_CLASS: ocs-storagecluster-ceph-rbd
+  DEFAULT_VOLUME_MODE: Block
+  DEFAULT_ACCESS_MODE: ReadWriteMany
+  CONSOLE_AUTH_REQUIRED: "true"
+  CONSOLE_USERNAME: admin

@@ -1,0 +1,14 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: forklift-migration-console
+  namespace: konveyor-forklift
+spec:
+  to:
+    kind: Service
+    name: forklift-migration-console
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

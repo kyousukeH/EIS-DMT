@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forklift 迁移控制台 · 虚拟化迁移至 KubeVirt</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="bg-fx" aria-hidden="true">
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow-a"></div>
+  <div class="bg-glow bg-glow-b"></div>
+</div>
+
+<div id="app">
+  <!-- ══════════════ 侧边导航 ══════════════ -->
+  <aside id="sidebar">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <strong>Forklift <span class="i18n-en">Console</span></strong>
+        <small>迁移控制台 · v2.10</small>
+      </div>
+    </div>
+
+    <nav id="nav">
+      <a class="nav-item active" href="#/dashboard">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <span>总览</span>
+      </a>
+      <a class="nav-item" href="#/wizard" data-cta="新建迁移">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        <span>新建迁移</span>
+        <em class="nav-cta">开始</em>
+      </a>
+      <a class="nav-item" href="#/plans">
+        <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        <span>迁移计划</span>
+        <em class="nav-pill" id="nav-plans-badge">4</em>
+      </a>
+      <a class="nav-item" href="#/providers">
+        <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="7" rx="2"/><rect x="2" y="13" width="20" height="7" rx="2"/><path d="M6 7.5h.01M6 16.5h.01"/></svg>
+        <span>平台连接</span>
+      </a>
+      <a class="nav-item" href="#/mappings">
+        <svg viewBox="0 0 24 24"><path d="M9 4h6M9 20h6"/><path d="M4 8.5c0-2.5 2-4.5 5-4.5M20 15.5c0 2.5-2 4.5-5 4.5"/><path d="M4 8.5h16M4 15.5h16"/><path d="M4 8.5c0 2.5 2 4.5 5 4.5M20 15.5c0-2.5-2-4.5-5-4.5" opacity=".55"/></svg>
+        <span>映射配置</span>
+      </a>
+      <a class="nav-item" href="#/history">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        <span>迁移历史</span>
+      </a>
+      <a class="nav-item" href="#/settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
+        <span>系统设置</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="cluster-health">
+        <div class="row"><span class="dot dot-ok"></span> KubeVirt 集群<span class="mono">cnv-prod</span></div>
+        <div class="row sub">Forklift Controller <span class="ok">健康</span> · CDI <span class="ok">正常</span></div>
+      </div>
+      <div class="user-chip">
+        <div class="avatar">孟</div>
+        <div><strong>mengkai</strong><small>云平台运维 · 管理员</small></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════════ 主区域 ══════════════ -->
+  <main id="main">
+    <header id="topbar">
+      <div class="crumb" id="crumb"><span>总览</span></div>
+      <div class="topbar-right">
+        <div class="global-search">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input placeholder="搜索虚拟机、计划、平台…" id="global-search">
+          <kbd>/</kbd>
+        </div>
+        <button class="icon-btn" id="speed-btn" title="演示速度">
+          <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.9l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.9-.34 1.7 1.7 0 0 0-1 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.9.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.9 1.7 1.7 0 0 0-1.56-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.1 1.7 1.7 0 0 0-.34-1.9l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.9.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.9-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.9V9a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z" transform="scale(.92) translate(1,1)"/></svg>
+          <span class="speed-label">1×</span>
+        </button>
+        <button class="icon-btn" title="通知" id="bell-btn">
+          <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          <em class="bell-dot" id="bell-dot">3</em>
+        </button>
+      </div>
+    </header>
+
+    <div id="views">
+      <section class="view" data-view="dashboard"></section>
+      <section class="view" data-view="wizard"></section>
+      <section class="view" data-view="plans"></section>
+      <section class="view" data-view="plan"></section>
+      <section class="view" data-view="providers"></section>
+      <section class="view" data-view="mappings"></section>
+      <section class="view" data-view="history"></section>
+      <section class="view" data-view="settings"></section>
+    </div>
+  </main>
+</div>
+
+<!-- 抽屉 / 弹窗 / Toast -->
+<div id="drawer-root"></div>
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: forklift-migration-console
+  namespace: konveyor-forklift
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [forklift-console.example.internal]
+      secretName: forklift-migration-console-tls
+  rules:
+    - host: forklift-console.example.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: forklift-migration-console
+                port:
+                  number: 8080

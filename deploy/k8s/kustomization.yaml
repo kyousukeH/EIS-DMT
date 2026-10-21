@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: konveyor-forklift
+resources:
+  - serviceaccount.yaml
+  - rbac.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+images:
+  - name: forklift-migration-console
+    newName: registry.example.internal/migration/forklift-migration-console
+    newTag: v0.1.0
