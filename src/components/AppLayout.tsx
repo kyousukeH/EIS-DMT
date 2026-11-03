@@ -1,50 +1,47 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
-  Activity, Boxes, ChevronLeft, ChevronRight, Gauge, GitBranch, Menu, Monitor,
-  Network, Server, Settings, ShieldCheck, Waypoints, X,
+  Activity, Boxes, ChevronLeft, ChevronRight, Gauge, GitBranch, ListChecks, Menu, Monitor,
+  MonitorCheck, Network, Server, Settings, ShieldCheck, Waypoints, X,
 } from 'lucide-react';
 import type { RuntimeConfig } from '../domain/types';
 import { IconButton } from './ui';
 
 const workflowNav = [
   {
-    label: '准备迁移环境', icon: Boxes,
+    label: '环境纳管', icon: Boxes,
     items: [
-      { to: '/providers/sources', label: '连接源集群', icon: Server, step: '01', end: true },
-      { to: '/providers/targets', label: '添加目标集群', icon: ShieldCheck, step: '02', end: true },
+      { to: '/providers/sources', label: '源端平台', icon: Server, end: true },
+      { to: '/providers/targets', label: '目标集群', icon: ShieldCheck, end: true },
     ],
   },
   {
-    label: '准备迁移资源', icon: Network,
+    label: '资产与规则', icon: Network,
     items: [
-      { to: '/vms/source', label: '源集群虚拟机', icon: Monitor, step: '03', end: true },
-      { to: '/mappings', label: '配置网络与存储', icon: Waypoints, step: '04', end: false },
+      { to: '/vms/source', label: '源端虚拟机', icon: Monitor, end: true },
+      { to: '/mappings', label: '网络与存储映射', icon: Waypoints, end: false },
     ],
   },
   {
-    label: '执行与查看', icon: GitBranch,
+    label: '迁移作业', icon: GitBranch,
     items: [
-      { to: '/plans', label: '创建与执行迁移', icon: GitBranch, step: '05', end: false },
-      { to: '/vms/target', label: '查看迁移结果', icon: Monitor, end: true },
+      { to: '/plans', label: '迁移任务', icon: ListChecks, end: false },
+      { to: '/vms/target', label: '目标端虚拟机', icon: MonitorCheck, end: true },
     ],
   },
 ];
 
 const titles: Record<string, string> = {
-  '/': '迁移总览', '/vms': '源集群虚拟机', '/vms/source': '源集群虚拟机', '/vms/target': '目标集群虚拟机',
-  '/providers': '源集群', '/providers/sources': '源集群', '/providers/targets': '目标集群', '/mappings': '网络与存储配置',
-  '/plans': '迁移计划', '/plans/new': '创建迁移计划', '/settings': '系统设置',
+  '/': '迁移总览', '/vms': '源端虚拟机', '/vms/source': '源端虚拟机', '/vms/target': '目标端虚拟机',
+  '/providers': '源端平台', '/providers/sources': '源端平台', '/providers/targets': '目标集群', '/mappings': '网络与存储映射',
+  '/plans': '迁移任务', '/plans/new': '迁移任务', '/settings': '系统设置',
 };
 
 export function AppLayout({ config }: { config: RuntimeConfig }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
-  const title = location.pathname.endsWith('/edit')
-    ? '编辑迁移计划'
-    : location.pathname.startsWith('/plans/') && location.pathname !== '/plans/new'
-      ? '迁移详情' : titles[location.pathname] || 'EIS-DMT';
+  const title = location.pathname.startsWith('/plans') ? '迁移任务' : titles[location.pathname] || 'EIS-DMT';
 
   return <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
     {mobileOpen && <button className="mobile-overlay" aria-label="关闭导航" onClick={() => setMobileOpen(false)} />}
@@ -61,8 +58,8 @@ export function AppLayout({ config }: { config: RuntimeConfig }) {
         <span className="nav-section-label">迁移流程</span>
         {workflowNav.map((section) => <div className="nav-flow-section" key={section.label}>
           <div className="nav-flow-heading"><section.icon size={18} /><span>{section.label}</span></div>
-          <div className="nav-flow-items">{section.items.map(({ to, label, icon: Icon, step, end }) => <NavLink key={to} to={to} end={end} onClick={() => setMobileOpen(false)} title={collapsed ? label : undefined}>
-            <span className="nav-flow-icon"><Icon size={16} /></span><span className="nav-flow-label">{label}</span>{step && <small>{step}</small>}
+          <div className="nav-flow-items">{section.items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setMobileOpen(false)} title={collapsed ? label : undefined}>
+            <span className="nav-flow-icon"><Icon size={16} /></span><span className="nav-flow-label">{label}</span>
           </NavLink>)}</div>
         </div>)}
         <div className="nav-system">

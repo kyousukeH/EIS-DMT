@@ -10,19 +10,20 @@ export const useStorageMaps = () => useQuery({ queryKey: ['storagemaps'], queryF
 export const usePlans = () => useQuery({ queryKey: ['plans'], queryFn: resources.plans, refetchInterval: polling });
 export const useMigrations = () => useQuery({ queryKey: ['migrations'], queryFn: resources.migrations, refetchInterval: polling });
 export const useControllers = () => useQuery({ queryKey: ['forkliftcontrollers'], queryFn: resources.controllers, refetchInterval: polling });
-export const useInventoryVMs = (provider?: Provider) => useQuery({
+export const useInventoryVMs = (provider?: Provider, autoRefresh = false) => useQuery({
   queryKey: ['inventory-vms', provider?.metadata.uid],
   queryFn: () => listInventoryVMs(provider as Provider),
   enabled: Boolean(provider),
+  refetchInterval: autoRefresh ? polling : false,
 });
 export const useInventoryNamespaces = (provider?: Provider) => useQuery({
   queryKey: ['inventory-namespaces', provider?.metadata.uid],
   queryFn: () => listInventoryNamespaces(provider as Provider),
   enabled: Boolean(provider),
 });
-export const useInventoryNetworks = (provider: Provider | undefined, role: 'source' | 'target') => useQuery({
-  queryKey: ['inventory-networks', role, provider?.metadata.uid],
-  queryFn: () => listInventoryNetworks(provider as Provider, role),
+export const useInventoryNetworks = (provider: Provider | undefined, role: 'source' | 'target', namespace?: string) => useQuery({
+  queryKey: ['inventory-networks', role, provider?.metadata.uid, namespace || 'all'],
+  queryFn: () => listInventoryNetworks(provider as Provider, role, namespace),
   enabled: Boolean(provider),
 });
 export const useInventoryStorages = (provider: Provider | undefined, role: 'source' | 'target') => useQuery({
@@ -37,7 +38,10 @@ export function useCreateResource<T extends Creatable>(resource: ForkliftResourc
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: T) => createResource(resource, body),
-    onSuccess: () => client.invalidateQueries({ queryKey: [resource] }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: [resource] });
+      if (resource === 'migrations') await client.invalidateQueries({ queryKey: ['plans'] });
+    },
   });
 }
 

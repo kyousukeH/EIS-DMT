@@ -19,6 +19,7 @@ export interface ObjectMeta {
   creationTimestamp?: string;
   generation?: number;
   labels?: Record<string, string>;
+  annotations?: Record<string, string>;
 }
 
 export interface ObjectReference {
@@ -126,6 +127,7 @@ export interface PlanVM {
   targetName?: string;
   warm?: boolean;
   xfsCompatibility?: boolean;
+  skipVMwareTools?: boolean;
   hooks?: Array<{ step: string; hook: ObjectReference }>;
 }
 
@@ -235,6 +237,9 @@ export interface InventoryResourceRef {
 export interface InventoryDisk {
   id?: string;
   name?: string;
+  claimName?: string;
+  role?: 'system' | 'data';
+  bootOrder?: number;
   capacity?: number;
   provisionedSize?: number;
   diskSizeBytes?: number;
@@ -244,6 +249,9 @@ export interface InventoryDisk {
   storageDomain?: string;
   storageContainerUuid?: string;
   storageContainerName?: string;
+  storageClassName?: string;
+  volumeMode?: 'Block' | 'Filesystem' | string;
+  accessModes?: string[];
 }
 
 export interface InventoryNIC {
@@ -255,7 +263,14 @@ export interface InventoryNIC {
 }
 
 export interface InventoryKubeVirtVM {
-  metadata?: { name?: string; namespace?: string };
+  metadata?: {
+    name?: string;
+    namespace?: string;
+    uid?: string;
+    creationTimestamp?: string;
+    labels?: Record<string, string>;
+    annotations?: Record<string, string>;
+  };
   spec?: {
     dataVolumeTemplates?: Array<{
       metadata?: { name?: string };
@@ -270,6 +285,15 @@ export interface InventoryKubeVirtVM {
           cpu?: { cores?: number; sockets?: number; threads?: number };
           memory?: { guest?: string };
           resources?: { requests?: { memory?: string } };
+          devices?: {
+            disks?: Array<{
+              name?: string;
+              bootOrder?: number;
+              disk?: { bus?: string };
+              lun?: { bus?: string };
+              cdrom?: { bus?: string };
+            }>;
+          };
         };
         networks?: Array<{
           name?: string;
@@ -284,7 +308,18 @@ export interface InventoryKubeVirtVM {
       };
     };
   };
-  status?: { printableStatus?: string; ready?: boolean };
+  status?: { printableStatus?: string; ready?: boolean; created?: boolean };
+}
+
+export interface KubernetesPersistentVolumeClaim {
+  metadata: { name: string; namespace?: string };
+  spec?: {
+    storageClassName?: string;
+    volumeMode?: 'Block' | 'Filesystem' | string;
+    accessModes?: string[];
+    resources?: { requests?: { storage?: string } };
+  };
+  status?: { phase?: string; capacity?: { storage?: string } };
 }
 
 export interface InventoryResource {

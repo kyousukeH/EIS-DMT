@@ -47,6 +47,18 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "delete", "deletecollection"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes"]
+    verbs: ["get", "delete", "deletecollection"]
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines"]
+    verbs: ["get", "list", "watch", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["subresources.kubevirt.io"]
+    resources: ["virtualmachines/start", "virtualmachines/stop"]
+    verbs: ["update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

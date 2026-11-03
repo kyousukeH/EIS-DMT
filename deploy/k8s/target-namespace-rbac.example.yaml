@@ -7,7 +7,16 @@ metadata:
 rules:
   - apiGroups: ["kubevirt.io"]
     resources: ["virtualmachines"]
-    verbs: ["get", "create"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["subresources.kubevirt.io"]
+    resources: ["virtualmachines/start", "virtualmachines/stop"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["pods", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "delete", "deletecollection"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes"]
+    verbs: ["get", "delete", "deletecollection"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -21,4 +30,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: forklift-migration-console
-    namespace: konveyor-forklift
+    namespace: REPLACE_FORKLIFT_NAMESPACE

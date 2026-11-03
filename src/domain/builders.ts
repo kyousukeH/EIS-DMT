@@ -1,6 +1,7 @@
 import type {
   Migration,
   MigrationType,
+  MappingRef,
   NetworkMap,
   ObjectReference,
   Plan,
@@ -21,6 +22,7 @@ export interface PlanInput {
   networkMap: NetworkMap;
   storageMap: StorageMap;
   vmIds: string[];
+  skipVMwareToolsVMIds?: string[];
   skipGuestConversion: boolean;
   runPreflightInspection: boolean;
   targetPowerState: 'on' | 'off' | 'auto';
@@ -36,6 +38,7 @@ export function ref(resource: { metadata: { name: string; namespace?: string; ui
 }
 
 export function buildPlan(input: PlanInput): Plan {
+  const skipVMwareToolsVMIds = new Set(input.skipVMwareToolsVMIds || []);
   return {
     apiVersion,
     kind: 'Plan',
@@ -47,11 +50,41 @@ export function buildPlan(input: PlanInput): Plan {
       warm: input.type === 'warm',
       provider: { source: ref(input.source), destination: ref(input.destination) },
       map: { network: ref(input.networkMap), storage: ref(input.storageMap) },
-      vms: input.vmIds.map((id) => ({ id })),
+      vms: input.vmIds.map((id) => ({ id, skipVMwareTools: skipVMwareToolsVMIds.has(id) })),
       skipGuestConversion: input.skipGuestConversion,
       runPreflightInspection: input.runPreflightInspection,
       targetPowerState: input.targetPowerState,
       preserveStaticIPs: input.preserveStaticIPs,
+    },
+  };
+}
+
+export interface NetworkMapInput {
+  name: string;
+  namespace: string;
+  source: Provider;
+  destination: Provider;
+  pairs: Array<{
+    source: MappingRef;
+    destination: NetworkMap['spec']['map'][number]['destination'];
+    networkIPMode?: NetworkMap['spec']['map'][number]['networkIPMode'];
+  }>;
+}
+
+export function buildNetworkMap(input: NetworkMapInput): NetworkMap {
+  return {
+    apiVersion,
+    kind: 'NetworkMap',
+    metadata: { name: input.name, namespace: input.namespace },
+    spec: {
+      provider: { source: ref(input.source), destination: ref(input.destination) },
+      map: input.pairs.map((pair) => ({
+        source: pair.source,
+        destination: pair.destination,
+        ...(pair.destination.type === 'multus' && pair.networkIPMode
+          ? { networkIPMode: pair.networkIPMode }
+          : {}),
+      })),
     },
   };
 }

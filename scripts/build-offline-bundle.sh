@@ -14,7 +14,7 @@ if [ "$IMAGE_NAME" = "$IMAGE_TAG" ]; then
   exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR/deploy"
+mkdir -p "$OUTPUT_DIR/deploy" "$OUTPUT_DIR/scripts"
 if [ "${SKIP_IMAGE_BUILD:-false}" = "true" ]; then
   docker image inspect "$IMAGE_REF" >/dev/null
 else
@@ -23,7 +23,8 @@ fi
 docker save "$IMAGE_REF" | gzip -9 > "$OUTPUT_DIR/forklift-migration-console-image.tar.gz"
 cp -R "$ROOT_DIR/deploy/k8s/." "$OUTPUT_DIR/deploy/"
 cp "$ROOT_DIR/scripts/install-offline.sh" "$OUTPUT_DIR/install.sh"
-chmod +x "$OUTPUT_DIR/install.sh"
+cp "$ROOT_DIR/scripts/authorize-target-namespace.sh" "$OUTPUT_DIR/scripts/authorize-target-namespace.sh"
+chmod +x "$OUTPUT_DIR/install.sh" "$OUTPUT_DIR/scripts/authorize-target-namespace.sh"
 
 sed -i "s#newName: .*#newName: $IMAGE_NAME#" "$OUTPUT_DIR/deploy/kustomization.yaml"
 sed -i "s#newTag: .*#newTag: $IMAGE_TAG#" "$OUTPUT_DIR/deploy/kustomization.yaml"

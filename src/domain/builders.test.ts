@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPlan, buildStorageMap, buildValidationPatch } from './builders';
+import { buildNetworkMap, buildPlan, buildStorageMap, buildValidationPatch } from './builders';
 import type { NetworkMap, Provider } from './types';
 
 const provider = (name: string, type: Provider['spec']['type']): Provider => ({
@@ -48,6 +48,25 @@ describe('resource builders', () => {
     expect(plan.spec.warm).toBe(true);
   });
 
+  it('writes the VMware Tools compatibility option only for selected virtual machines', () => {
+    const storageMap = buildStorageMap({
+      name: 'storage-map', namespace: 'konveyor-forklift', source, destination,
+      pairs: [{ sourceId: 'datastore-1', storageClass: 'ceph-rbd' }],
+    });
+    const plan = buildPlan({
+      name: 'plan-tools', namespace: 'konveyor-forklift', targetNamespace: 'workloads', type: 'cold',
+      source, destination, networkMap, storageMap, vmIds: ['vm-1', 'vm-2'],
+      skipVMwareToolsVMIds: ['vm-2'], skipGuestConversion: false,
+      runPreflightInspection: true, targetPowerState: 'auto', preserveStaticIPs: true,
+    });
+
+    expect(plan.spec.vms).toEqual([
+      { id: 'vm-1', skipVMwareTools: false },
+      { id: 'vm-2', skipVMwareTools: true },
+    ]);
+    expect(plan.spec.type).toBe('cold');
+  });
+
   it('writes defaults while allowing each storage pair to choose its own modes', () => {
     const map = buildStorageMap({
       name: 'storage-map', namespace: 'konveyor-forklift', source, destination,
@@ -72,6 +91,32 @@ describe('resource builders', () => {
       pairs: [{ sourceId: '', sourceName: 'fast-rbd', sourceNamespace: 'apps', storageClass: 'ceph-rbd' }],
     });
     expect(map.spec.map[0].source).toEqual({ name: 'fast-rbd', namespace: 'apps' });
+  });
+
+  it('omits IP handling from default and disconnected network destinations', () => {
+    const map = buildNetworkMap({
+      name: 'network-map', namespace: 'konveyor-forklift', source, destination,
+      pairs: [
+        { source: { id: 'network-1' }, destination: { type: 'pod' }, networkIPMode: 'dhcp' },
+        { source: { id: 'network-2' }, destination: { type: 'ignored' }, networkIPMode: 'preserve' },
+        { source: { id: 'network-3' }, destination: { type: 'multus', namespace: 'apps', name: 'business' }, networkIPMode: 'preserve' },
+      ],
+    });
+
+    expect(map.spec.map[0]).not.toHaveProperty('networkIPMode');
+    expect(map.spec.map[1]).not.toHaveProperty('networkIPMode');
+    expect(map.spec.map[2].networkIPMode).toBe('preserve');
+
+    const storageMap = buildStorageMap({
+      name: 'storage-map', namespace: 'konveyor-forklift', source, destination,
+      pairs: [{ sourceId: 'datastore-1', storageClass: 'ceph-rbd' }],
+    });
+    const plan = buildPlan({
+      name: 'pod-static-ip', namespace: 'konveyor-forklift', targetNamespace: 'workloads', type: 'cold',
+      source, destination, networkMap: map, storageMap, vmIds: ['vm-1'], skipGuestConversion: false,
+      runPreflightInspection: true, targetPowerState: 'auto', preserveStaticIPs: true,
+    });
+    expect(plan.spec.preserveStaticIPs).toBe(true);
   });
 
   it('uses the exact ForkliftController validation field', () => {

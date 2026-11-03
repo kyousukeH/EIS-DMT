@@ -3,6 +3,11 @@ import {
   getCurrentDiskTransferStep,
   diskTransferProgressPercent,
   getLatestMigration,
+  getMigrationPhaseLabel,
+  getMigrationStepLabel,
+  getMigrationTaskLabel,
+  getMigrationTypeLabel,
+  getPlanActivityTime,
   getPlanMigrationType,
   getStepFailure,
   getVmFailure,
@@ -89,6 +94,24 @@ describe('migration status helpers', () => {
     expect(getPlanMigrationType(plan({ spec: { ...plan().spec, vms: [{ id: 'vm-22', warm: true }] } }))).toBe('warm');
   });
 
+  it('provides user-facing Chinese migration type labels', () => {
+    expect(getMigrationTypeLabel('cold')).toBe('冷迁移');
+    expect(getMigrationTypeLabel('warm')).toBe('温迁移');
+    expect(getMigrationTypeLabel('live')).toBe('实时迁移');
+    expect(getMigrationTypeLabel('conversion')).toBe('系统转换');
+  });
+
+  it('translates controller stages and phases into action-oriented Chinese labels', () => {
+    expect(getMigrationStepLabel({ name: 'Initialize', description: 'Initialize migration.' })).toBe('初始化虚拟机迁移环境');
+    expect(getMigrationStepLabel({ name: 'Cutover', description: 'Finalize disk transfer.' })).toBe('同步增量数据并关闭源虚拟机');
+    expect(getMigrationStepLabel({ name: 'ImageConversion', description: 'Convert image to kubevirt.' })).toBe('适配虚拟机操作系统与目标驱动');
+    expect(getMigrationStepLabel({ name: 'CreateVM', description: 'Create VirtualMachine on target.' })).toBe('在目标集群创建虚拟机');
+    expect(getMigrationTaskLabel({ name: 'disk-0', phase: 'Running' })).toBe('复制磁盘 disk-0');
+    expect(getMigrationPhaseLabel('ImportInProgress')).toBe('执行中');
+    expect(getMigrationPhaseLabel('Pending')).toBe('等待执行');
+    expect(getMigrationPhaseLabel('ControllerSpecificState')).toBe('状态更新中');
+  });
+
   it('only allows execution after the current generation is ready and unblocked', () => {
     expect(isPlanReady(plan())).toBe(true);
     expect(isPlanReady(plan({ status: { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'True' }] } }))).toBe(false);
@@ -106,6 +129,20 @@ describe('migration status helpers', () => {
     expect(isPlanEditable(plan({ status: { conditions: [{ type: 'Executing', status: 'True' }] } }))).toBe(false);
   });
 
+  it('uses the newest execution event as the plan activity time', () => {
+    const value = plan({
+      metadata: { name: 'plan-a', creationTimestamp: '2026-10-18T08:00:00Z' },
+      status: {
+        migration: {
+          started: '2026-10-19T08:00:00Z',
+          history: [{ started: '2026-10-20T08:00:00Z' }, { completed: '2026-10-21T08:00:00Z' }],
+        },
+      },
+    });
+
+    expect(getPlanActivityTime(value)).toBe(Date.parse('2026-10-21T08:00:00Z'));
+  });
+
   it('uses the final warm transfer progress after Cutover starts', () => {
     const initial = { name: 'DiskTransfer', phase: 'Completed', progress: { total: 100, completed: 100 } };
     const finalize = { name: 'Cutover', description: 'Finalize disk transfer.', phase: 'Running', progress: { total: 100, completed: 35 } };
@@ -114,6 +151,25 @@ describe('migration status helpers', () => {
     expect(isDiskTransferStep(finalize)).toBe(true);
     expect(getCurrentDiskTransferStep(vm)).toBe(finalize);
     expect(getCurrentDiskTransferStep({ ...vm, pipeline: [initial, { ...finalize, phase: 'Pending', progress: { total: 100, completed: 0 } }] })).toBe(initial);
+  });
+
+  it('does not replace a completed warm transfer with a newly appended zero-value stage', () => {
+    const initial = { name: 'DiskTransfer', phase: 'Completed', progress: { total: 100, completed: 100 } };
+    const completedFinal = { name: 'Cutover', phase: 'Completed', completed: '2026-10-19T00:00:00Z', progress: { total: 20, completed: 20 } };
+    const reconciledFinal = { name: 'Cutover', phase: 'Pending', progress: { total: 20, completed: 0 } };
+    const vm: VMStatus = { id: 'vm-1', pipeline: [initial, completedFinal, reconciledFinal] };
+
+    expect(getCurrentDiskTransferStep(vm)).toBe(completedFinal);
+    expect(diskTransferProgressPercent(vm)).toBe(100);
+  });
+
+  it('keeps final transfer progress monotonic when reconciliation starts a duplicate stage', () => {
+    const previousFinal = { name: 'Cutover', phase: 'Running', started: '2026-10-19T00:00:00Z', progress: { total: 100, completed: 100 } };
+    const duplicateFinal = { name: 'Cutover', phase: 'Running', started: '2026-10-19T00:01:00Z', progress: { total: 100, completed: 0 } };
+    const vm: VMStatus = { id: 'vm-1', pipeline: [previousFinal, duplicateFinal] };
+
+    expect(getCurrentDiskTransferStep(vm)).toBe(previousFinal);
+    expect(diskTransferProgressPercent(vm)).toBe(100);
   });
 
   it('selects the migration referenced by the latest plan history item', () => {

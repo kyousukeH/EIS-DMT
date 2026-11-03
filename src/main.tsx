@@ -1,6 +1,6 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, createHashRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { loadRuntimeConfig } from './api/client';
@@ -18,9 +18,12 @@ function Bootstrap() {
   const [config, setConfig] = useState<RuntimeConfig>();
   const [error, setError] = useState<Error>();
   useEffect(() => { loadRuntimeConfig().then(setConfig).catch(setError); }, []);
+  const router = useMemo(() => config
+    ? (window.location.protocol === 'file:' ? createHashRouter : createBrowserRouter)([{ path: '*', element: <App config={config} /> }])
+    : undefined, [config]);
   if (error) return <div className="page-state"><strong>控制台启动失败</strong><span>{error.message}</span></div>;
-  if (!config) return <div className="page-state"><span>正在加载运行配置...</span></div>;
-  return <BrowserRouter><App config={config} /></BrowserRouter>;
+  if (!config || !router) return <div className="page-state"><span>正在加载运行配置...</span></div>;
+  return <RouterProvider router={router} />;
 }
 
 createRoot(document.getElementById('root')!).render(

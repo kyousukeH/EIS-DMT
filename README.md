@@ -83,7 +83,7 @@ export CONSOLE_PASSWORD='replace-with-a-strong-password'
 
 安装脚本会校验镜像包、载入镜像、推送到内部仓库、创建认证 Secret、部署并等待 Pod Ready。若集群节点直接预加载镜像且没有内部仓库，需要把 Deployment 改为节点已有的镜像名并保持 `imagePullPolicy: IfNotPresent`。
 
-为每个迁移目标 Namespace 授权：
+为每个迁移目标 Namespace 授权。该授权同时用于读取目标磁盘配置、管理目标虚拟机，以及回滚时按当前任务范围清理虚拟机和磁盘资源：
 
 ```sh
 ./scripts/authorize-target-namespace.sh vm-workloads konveyor-forklift

@@ -83,12 +83,28 @@ export const mockInventoryVMs: InventoryVM[] = [
   { id: 'vm-102', name: 'erp-db-01', path: '/Production/ERP', powerState: 'poweredOn', guestName: 'Red Hat Enterprise Linux 8', cpuCount: 16, memoryMB: 65536, storageUsed: 1280 * GiB, disks: [{ capacity: 120 * GiB, datastore: { id: 'datastore-44' } }, { capacity: 2 * 1024 * GiB, datastore: { id: 'datastore-52' } }], networks: [{ id: 'network-21' }, { id: 'network-37' }], concerns: [{ category: 'Warning', label: '磁盘空间偏低', message: '根分区剩余空间不足，迁移前预检可能失败。' }] },
   { id: 'vm-103', name: 'billing-win-01', path: '/Production/Billing', powerState: 'poweredOff', guestName: 'Microsoft Windows Server 2019', cpuCount: 8, memoryMB: 32768, storageUsed: 720 * GiB, disks: [{ capacity: 120 * GiB, datastore: { id: 'datastore-44' } }, { capacity: 800 * GiB, datastore: { id: 'datastore-52' } }], networks: [{ id: 'network-21' }], concerns: [{ category: 'Advisory', label: '网络设备需要转换', message: '建议保持 skipGuestConversion=false，以安装 VirtIO 网络驱动。' }] },
   { id: 'vm-104', name: 'legacy-router', path: '/Legacy/Network', powerState: 'poweredOff', guestName: 'Other Linux', cpuCount: 4, memoryMB: 8192, storageUsed: 96 * GiB, disks: [{ capacity: 120 * GiB, datastore: { id: 'datastore-44' } }], networks: [{ id: 'network-37' }], concerns: [{ category: 'Critical', label: '不支持的磁盘控制器', message: '检测到不支持的磁盘控制器，迁移可能无法启动。' }] },
+  { id: 'vm-105', name: 'legacy-tools-app', path: '/Legacy/Applications', powerState: 'poweredOn', guestName: 'CentOS 7', cpuCount: 4, memoryMB: 8192, storageUsed: 64 * GiB, disks: [{ capacity: 80 * GiB, datastore: { id: 'datastore-79' } }], networks: [{ id: 'network-55' }], concerns: [{ id: 'GuestToolsIssue', category: 'Critical', label: 'VMware Tools 未安装', message: '源虚拟机未安装或未运行 VMware Tools。' }] },
 ];
 
 export const mockTargetInventoryVMs: InventoryVM[] = [
-  { id: 'target-erp-app-01', name: 'erp-app-01', namespace: 'vm-workloads', status: 'Running', guestName: 'Red Hat Enterprise Linux 8', cpuCount: 8, memoryMB: 16384, disks: [{ capacity: 520 * GiB }], concerns: [] },
+  {
+    id: 'target-erp-app-01', name: 'erp-app-01', namespace: 'vm-workloads', status: 'Starting', guestName: 'Red Hat Enterprise Linux 8', cpuCount: 8, memoryMB: 16384,
+    disks: [
+      { name: 'rootdisk', claimName: 'erp-app-01-rootdisk', capacity: 120 * GiB, role: 'system', bootOrder: 1, storageClassName: 'ocs-storagecluster-ceph-rbd' },
+      { name: 'datadisk', claimName: 'erp-app-01-datadisk', capacity: 400 * GiB, role: 'data', storageClassName: 'ocs-storagecluster-ceph-rbd' },
+    ],
+    object: {
+      metadata: { namespace: 'vm-workloads', labels: { plan: 'plan-erp' }, creationTimestamp: ago(55) },
+      spec: { template: { spec: {
+        domain: { devices: { disks: [{ name: 'rootdisk', bootOrder: 1 }, { name: 'datadisk' }] } },
+        volumes: [{ name: 'rootdisk', persistentVolumeClaim: { claimName: 'erp-app-01-rootdisk' } }, { name: 'datadisk', dataVolume: { name: 'erp-app-01-datadisk' } }],
+      } } },
+      status: { printableStatus: 'Starting', ready: false, created: true },
+    },
+    concerns: [],
+  },
   { id: 'target-finance-core-01', name: 'finance-core-01', namespace: 'vm-workloads', status: 'Running', guestName: 'Rocky Linux 9', cpuCount: 4, memoryMB: 8192, disks: [{ capacity: 120 * GiB }], concerns: [] },
-  { id: 'target-archive-app-01', name: 'archive-app-01', namespace: 'archive', status: 'Stopped', guestName: 'Red Hat Enterprise Linux 8', cpuCount: 4, memoryMB: 8192, disks: [{ capacity: 120 * GiB }], concerns: [] },
+  { id: 'target-archive-app-01', name: 'archive-app-01', namespace: 'archive', status: 'Stopped', guestName: 'Red Hat Enterprise Linux 8', cpuCount: 4, memoryMB: 8192, disks: [{ capacity: 120 * GiB }], object: { metadata: { namespace: 'archive', labels: { plan: 'plan-archive' }, creationTimestamp: ago(8450) } }, concerns: [] },
 ];
 
 export const mockSourceNetworks: InventoryResource[] = [
@@ -156,6 +172,17 @@ const vmWarmFinalizing = {
   ],
 };
 
+const vmWarmNotReady = {
+  id: 'vm-104', name: 'legacy-router', phase: 'Running', started: ago(30),
+  pipeline: [
+    { name: 'Initialize', description: '准备迁移', phase: 'Completed', progress: { total: 1, completed: 1 }, completed: ago(29) },
+    { name: 'DiskTransfer', description: '复制磁盘', phase: 'Running', started: ago(28), progress: { total: 120000, completed: 72000 }, tasks: [
+      { name: 'disk-0', description: '系统盘', phase: 'ImportInProgress', started: ago(28), progress: { total: 120000, completed: 72000 } },
+    ] },
+    { name: 'Cutover', description: 'Finalize disk transfer.', phase: 'Pending', progress: { total: 120000, completed: 0 } },
+  ],
+};
+
 const vmCompletedWithStaleImporter = {
   id: 'vm-89', name: 'archive-app-01', phase: 'Completed', started: ago(8500), completed: ago(8400),
   pipeline: [
@@ -184,7 +211,13 @@ export const mockPlans: Plan[] = [
   },
   {
     apiVersion: 'forklift.konveyor.io/v1beta1', kind: 'Plan',
-    metadata: { name: 'billing-wave-02', namespace: mockConfig.namespace, uid: 'plan-billing', creationTimestamp: ago(410), generation: 2 },
+    metadata: {
+      name: 'billing-wave-02', namespace: mockConfig.namespace, uid: 'plan-billing', creationTimestamp: ago(410), generation: 2,
+      annotations: {
+        'eis-dmt.io/auto-start-status': 'failed',
+        'eis-dmt.io/auto-start-message': '源虚拟机存在快照，请先删除后重试。',
+      },
+    },
     spec: {
       description: '账务 Windows 工作负载', targetNamespace: 'billing', type: 'warm',
       provider: { source: { name: 'production-vcenter' }, destination: { name: 'host' } },
@@ -227,6 +260,36 @@ export const mockPlans: Plan[] = [
   },
   {
     apiVersion: 'forklift.konveyor.io/v1beta1', kind: 'Plan',
+    metadata: { name: 'warm-risk-gate', namespace: mockConfig.namespace, uid: 'plan-warm-risk', creationTimestamp: ago(32), generation: 1 },
+    spec: {
+      description: '底包同步未完成的割接门禁示例', targetNamespace: 'vm-workloads', type: 'warm', warm: true,
+      provider: { source: { name: 'production-vcenter' }, destination: { name: 'host' } },
+      map: { network: { name: 'production-networks' }, storage: { name: 'ceph-block-default' } },
+      vms: [{ id: 'vm-104', warm: true }], skipGuestConversion: false, runPreflightInspection: false,
+      targetPowerState: 'on', preserveStaticIPs: true,
+    },
+    status: {
+      observedGeneration: 1, conditions: [{ type: 'Executing', status: 'True', message: 'Migration is executing' }],
+      migration: { started: ago(30), vms: [vmWarmNotReady], history: [{ migration: { name: 'warm-risk-gate-migration-1', uid: 'migration-warm-risk' }, started: ago(30) }] },
+    },
+  },
+  {
+    apiVersion: 'forklift.konveyor.io/v1beta1', kind: 'Plan',
+    metadata: { name: 'rollback-failed-01', namespace: mockConfig.namespace, uid: 'plan-rollback', creationTimestamp: ago(80), generation: 1 },
+    spec: {
+      description: '用于验证失败回滚流程', targetNamespace: 'rollback-workloads', type: 'cold',
+      provider: { source: { name: 'production-vcenter' }, destination: { name: 'host' } },
+      map: { network: { name: 'production-networks' }, storage: { name: 'ceph-block-default' } },
+      vms: [{ id: 'vm-102' }], skipGuestConversion: false, runPreflightInspection: true,
+      targetPowerState: 'off', preserveStaticIPs: true,
+    },
+    status: {
+      observedGeneration: 1, conditions: [{ type: 'Failed', status: 'True', category: 'Critical', message: 'Migration failed' }],
+      migration: { started: ago(78), completed: ago(60), vms: [vmFailed], history: [{ migration: { name: 'rollback-failed-01-migration-1', uid: 'migration-rollback' }, started: ago(78) }] },
+    },
+  },
+  {
+    apiVersion: 'forklift.konveyor.io/v1beta1', kind: 'Plan',
     metadata: { name: 'archive-wave-2026q2', namespace: mockConfig.namespace, uid: 'plan-archive', creationTimestamp: ago(9000), generation: 1 },
     spec: {
       description: '已完成的归档批次', targetNamespace: 'archive', type: 'cold',
@@ -257,6 +320,18 @@ export const mockMigrations: Migration[] = [
     metadata: { name: 'warm-sync-01-migration-2', namespace: mockConfig.namespace, uid: 'migration-warm-2', creationTimestamp: ago(95) },
     spec: { plan: { name: 'warm-sync-01', namespace: mockConfig.namespace } },
     status: { conditions: [{ type: 'Executing', status: 'True' }] },
+  },
+  {
+    apiVersion: 'forklift.konveyor.io/v1beta1', kind: 'Migration',
+    metadata: { name: 'warm-risk-gate-migration-1', namespace: mockConfig.namespace, uid: 'migration-warm-risk', creationTimestamp: ago(30) },
+    spec: { plan: { name: 'warm-risk-gate', namespace: mockConfig.namespace } },
+    status: { conditions: [{ type: 'Executing', status: 'True' }] },
+  },
+  {
+    apiVersion: 'forklift.konveyor.io/v1beta1', kind: 'Migration',
+    metadata: { name: 'rollback-failed-01-migration-1', namespace: mockConfig.namespace, uid: 'migration-rollback', creationTimestamp: ago(78) },
+    spec: { plan: { name: 'rollback-failed-01', namespace: mockConfig.namespace } },
+    status: { conditions: [{ type: 'Failed', status: 'True' }] },
   },
 ];
 

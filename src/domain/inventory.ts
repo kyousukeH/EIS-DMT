@@ -1,9 +1,14 @@
-import type { InventoryResource, InventoryVM, Plan, ProviderType } from './types';
+import type { InventoryConcern, InventoryDisk, InventoryResource, InventoryVM, Plan, ProviderType } from './types';
 import { getPlanStatus } from './status';
 
 const KiB = 1024;
 const MiB = KiB ** 2;
 const GiB = KiB ** 3;
+
+export function isVMwareToolsConcern(concern: InventoryConcern): boolean {
+  const text = [concern.id, concern.label, concern.assessment, concern.message].filter(Boolean).join(' ');
+  return /vmware\s*tools|guest\s*tools|guesttools|guest-tools|客户机工具|虚拟机工具/i.test(text);
+}
 
 export function parseKubernetesQuantity(value?: string): number {
   if (!value) return 0;
@@ -22,14 +27,54 @@ function ovfCapacity(capacity: number, units?: string) {
   return power ? capacity * (2 ** Number(power)) : capacity;
 }
 
-export function configuredDiskBytes(vm: InventoryVM): number {
-  const disks = vm.disks || [];
-  const diskBytes = disks.reduce((total, disk) => total
-    + (disk.diskSizeBytes || 0)
+export function configuredDiskCapacityBytes(disk: InventoryDisk): number {
+  return (disk.diskSizeBytes || 0)
     + (!disk.diskSizeBytes && disk.diskSizeMib ? disk.diskSizeMib * MiB : 0)
     + (!disk.diskSizeBytes && !disk.diskSizeMib && disk.provisionedSize ? disk.provisionedSize : 0)
     + (!disk.diskSizeBytes && !disk.diskSizeMib && !disk.provisionedSize && disk.capacity
-      ? ovfCapacity(disk.capacity, disk.capacityAllocationUnits) : 0), 0);
+      ? ovfCapacity(disk.capacity, disk.capacityAllocationUnits) : 0);
+}
+
+function withDiskRoles(disks: InventoryDisk[]): InventoryDisk[] {
+  if (disks.length === 0 || disks.some((disk) => disk.role === 'system')) return disks;
+  const explicitBootOrders = disks.map((disk) => disk.bootOrder).filter((value): value is number => value !== undefined);
+  const systemIndex = explicitBootOrders.length
+    ? disks.findIndex((disk) => disk.bootOrder === Math.min(...explicitBootOrders))
+    : 0;
+  return disks.map((disk, index) => ({ ...disk, role: index === systemIndex ? 'system' : 'data' }));
+}
+
+export function configuredDisks(vm: InventoryVM): InventoryDisk[] {
+  if ((vm.disks || []).length > 0) return withDiskRoles(vm.disks || []);
+
+  const devices = vm.object?.spec?.template?.spec?.domain?.devices?.disks || [];
+  const templates = vm.object?.spec?.dataVolumeTemplates || [];
+  if (templates.length > 0) return withDiskRoles(templates.map((template) => {
+    const name = template.metadata?.name;
+    const device = devices.find((item) => item.name === name);
+    const request = template.spec?.storage?.resources?.requests?.storage
+      || template.spec?.pvc?.resources?.requests?.storage;
+    return {
+      name,
+      claimName: name,
+      bootOrder: device?.bootOrder,
+      capacity: parseKubernetesQuantity(request),
+      storageClassName: template.spec?.storage?.storageClassName || template.spec?.pvc?.storageClassName,
+    };
+  }));
+
+  const volumes = vm.object?.spec?.template?.spec?.volumes || [];
+  return withDiskRoles(volumes.flatMap((volume) => {
+    const claimName = volume.persistentVolumeClaim?.claimName || volume.dataVolume?.name;
+    if (!claimName) return [];
+    const device = devices.find((item) => item.name === volume.name);
+    return [{ name: volume.name, claimName, bootOrder: device?.bootOrder }];
+  }));
+}
+
+export function configuredDiskBytes(vm: InventoryVM): number {
+  const disks = configuredDisks(vm);
+  const diskBytes = disks.reduce((total, disk) => total + configuredDiskCapacityBytes(disk), 0);
   if (diskBytes > 0) return diskBytes;
 
   return (vm.object?.spec?.dataVolumeTemplates || []).reduce((total, template) => {
@@ -59,13 +104,52 @@ export function inventoryMemoryMB(vm: InventoryVM): number | undefined {
 }
 
 export function inventoryPowerState(vm: InventoryVM): string | undefined {
-  const directState = vm.powerState || vm.status;
+  const directState = vm.object?.status?.printableStatus || vm.status || vm.powerState;
+  if (/starting/i.test(directState || '')) return 'starting';
+  if (/provisioning/i.test(directState || '')) return 'provisioning';
+  if (/waiting.*volume|waitingforvolumebinding/i.test(directState || '')) return 'waitingForVolume';
+  if (/stopping/i.test(directState || '')) return 'stopping';
+  if (/terminating|deleting/i.test(directState || '')) return 'terminating';
+  if (/migrating/i.test(directState || '')) return 'migrating';
+  if (/paused/i.test(directState || '')) return 'paused';
+  if (/pvcnotfound/i.test(directState || '')) return 'pvcNotFound';
+  if (/datavolumeerror/i.test(directState || '')) return 'dataVolumeError';
+  if (/unschedulable/i.test(directState || '')) return 'unschedulable';
+  if (/crash|error|imagepull/i.test(directState || '')) return 'error';
   if (/poweredOn|running|up/i.test(directState || '')) return 'poweredOn';
   if (/poweredOff|stopped|down|halted/i.test(directState || '')) return 'poweredOff';
   if (directState) return directState;
   const status = vm.object?.status;
   if (status?.ready || status?.printableStatus === 'Running') return 'poweredOn';
   return status?.printableStatus;
+}
+
+export interface InventoryPowerPresentation {
+  state: string;
+  label: string;
+  tone: 'running' | 'pending' | 'warning' | 'danger';
+  transitional: boolean;
+}
+
+export function inventoryPowerPresentation(vm: InventoryVM): InventoryPowerPresentation {
+  const state = inventoryPowerState(vm) || 'unknown';
+  const presentations: Record<string, Omit<InventoryPowerPresentation, 'state'>> = {
+    poweredOn: { label: '运行中', tone: 'running', transitional: false },
+    poweredOff: { label: '已关机', tone: 'pending', transitional: false },
+    starting: { label: '启动中', tone: 'running', transitional: true },
+    provisioning: { label: '正在准备资源', tone: 'running', transitional: true },
+    waitingForVolume: { label: '等待磁盘就绪', tone: 'warning', transitional: true },
+    stopping: { label: '关机中', tone: 'running', transitional: true },
+    terminating: { label: '删除中', tone: 'warning', transitional: true },
+    migrating: { label: '运行位置调整中', tone: 'running', transitional: true },
+    paused: { label: '已暂停', tone: 'warning', transitional: false },
+    pvcNotFound: { label: '磁盘未找到', tone: 'danger', transitional: false },
+    dataVolumeError: { label: '磁盘准备失败', tone: 'danger', transitional: false },
+    unschedulable: { label: '无法调度', tone: 'danger', transitional: false },
+    error: { label: '运行异常', tone: 'danger', transitional: false },
+    unknown: { label: '状态确认中', tone: 'pending', transitional: true },
+  };
+  return { state, ...(presentations[state] || { label: String(state), tone: 'pending' as const, transitional: true }) };
 }
 
 export function inventoryVMNamespace(vm: InventoryVM): string {
@@ -80,12 +164,34 @@ export interface MigratedTargetVM {
   planName: string;
   sourceProvider: string;
   completed?: string;
+  confidence: 'confirmed' | 'inferred';
 }
 
-export function migratedTargetVMs(plans: Plan[], destinationProvider: string): Map<string, MigratedTargetVM> {
-  const migrated = new Map<string, MigratedTargetVM>();
-  plans
-    .filter((plan) => plan.spec.provider.destination.name === destinationProvider)
+function migrationTimestamp(plan: Plan, completed?: string): number {
+  const historyTimes = (plan.status?.migration?.history || []).flatMap((entry) => [entry.completed, entry.started]);
+  const timestamps = [
+    completed,
+    plan.status?.migration?.completed,
+    ...historyTimes,
+    plan.status?.migration?.started,
+    plan.metadata.creationTimestamp,
+  ].map((value) => Date.parse(value || '')).filter(Number.isFinite);
+  return timestamps.length ? Math.max(...timestamps) : Number.NEGATIVE_INFINITY;
+}
+
+function targetPlanLabels(vm: InventoryVM): Record<string, string> {
+  return vm.object?.metadata?.labels || {};
+}
+
+export function migratedTargetVMs(
+  plans: Plan[],
+  destinationProvider: string,
+  targetVMs: InventoryVM[] = [],
+): Map<string, MigratedTargetVM> {
+  const historical = new Map<string, MigratedTargetVM>();
+  const timestamps = new Map<string, number>();
+  const destinationPlans = plans.filter((plan) => plan.spec.provider.destination.name === destinationProvider);
+  destinationPlans
     .forEach((plan) => {
       const planSucceeded = getPlanStatus(plan).tone === 'success';
       plan.spec.vms.forEach((plannedVM) => {
@@ -93,13 +199,53 @@ export function migratedTargetVMs(plans: Plan[], destinationProvider: string): M
         const vmSucceeded = Boolean(statusVM?.completed || /Completed|Succeeded/i.test(statusVM?.phase || ''));
         const targetName = statusVM?.targetName || plannedVM.targetName || statusVM?.name || plannedVM.name;
         if (!targetName || (!planSucceeded && !vmSucceeded)) return;
-        migrated.set(targetVMKey(plan.spec.targetNamespace, targetName), {
+        const key = targetVMKey(plan.spec.targetNamespace, targetName);
+        const completed = statusVM?.completed || plan.status?.migration?.completed;
+        const occurredAt = migrationTimestamp(plan, completed);
+        if (historical.has(key) && occurredAt <= (timestamps.get(key) ?? Number.NEGATIVE_INFINITY)) return;
+        historical.set(key, {
           planName: plan.metadata.name,
           sourceProvider: plan.spec.provider.source.name,
-          completed: statusVM?.completed || plan.status?.migration?.completed,
+          completed,
+          confidence: 'inferred',
         });
+        timestamps.set(key, occurredAt);
       });
     });
+
+  if (targetVMs.length === 0) return historical;
+
+  const migrated = new Map<string, MigratedTargetVM>();
+  const plansByName = new Map(destinationPlans.map((plan) => [plan.metadata.name, plan]));
+  const plansByUid = new Map(destinationPlans.filter((plan) => plan.metadata.uid).map((plan) => [plan.metadata.uid, plan]));
+  targetVMs.forEach((vm) => {
+    const labels = targetPlanLabels(vm);
+    const labeledPlanName = labels['eis-dmt.io/plan-name'] || labels['migration.konveyor.io/plan-name'] || labels['plan-name'];
+    const labeledPlan = (labeledPlanName && plansByName.get(labeledPlanName))
+      || (labels.plan && plansByUid.get(labels.plan));
+    const key = targetVMKey(inventoryVMNamespace(vm), vm.name);
+    if (labeledPlan) {
+      migrated.set(key, {
+        planName: labeledPlan.metadata.name,
+        sourceProvider: labeledPlan.spec.provider.source.name,
+        completed: labeledPlan.status?.migration?.completed,
+        confidence: 'confirmed',
+      });
+      return;
+    }
+
+    const inferred = historical.get(key);
+    const creationTime = Date.parse(vm.object?.metadata?.creationTimestamp || '');
+    const inferredPlan = inferred && plansByName.get(inferred.planName);
+    const started = Date.parse(inferredPlan?.status?.migration?.started || inferredPlan?.metadata.creationTimestamp || '');
+    const completed = Date.parse(inferredPlan?.status?.migration?.completed || '');
+    const tolerance = 5 * 60_000;
+    if (inferred && Number.isFinite(creationTime) && Number.isFinite(started)
+      && creationTime >= started - tolerance
+      && (!Number.isFinite(completed) || creationTime <= completed + tolerance)) {
+      migrated.set(key, inferred);
+    }
+  });
   return migrated;
 }
 

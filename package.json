@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "concurrently -k -n web,server -c cyan,green \"vite --host 0.0.0.0\" \"APP_MODE=cluster CONSOLE_AUTH_REQUIRED=false PORT=8080 node --watch server/index.mjs\"",
     "build": "tsc -b && vite build",
+    "export:html": "npm run build && node scripts/export-standalone.mjs",
     "start": "node server/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -6,11 +6,11 @@ export function StatusBadge({ tone, children }: PropsWithChildren<{ tone: UiStat
   return <span className={`status-badge status-${tone}`}><span className="status-dot" />{children}</span>;
 }
 
-export function Button({ variant = 'primary', icon, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & {
+export function Button({ variant = 'primary', icon, children, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   icon?: ReactNode;
 }) {
-  return <button className={`button button-${variant}`} {...props}>{icon}{children}</button>;
+  return <button className={`button button-${variant} ${className}`.trim()} {...props}>{icon}{children}</button>;
 }
 
 export function IconButton({ label, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
@@ -50,11 +50,12 @@ export function Modal({ title, description, open, onClose, children, footer, siz
   </div>;
 }
 
-export function ConfirmDialog({ open, title, description, confirmLabel, onClose, onConfirm, pending = false, danger = true, error }: {
+export function ConfirmDialog({ open, title, description, confirmLabel, pendingLabel = '正在处理...', onClose, onConfirm, pending = false, danger = true, error }: {
   open: boolean;
   title: string;
   description: string;
   confirmLabel: string;
+  pendingLabel?: string;
   onClose: () => void;
   onConfirm: () => void;
   pending?: boolean;
@@ -63,10 +64,10 @@ export function ConfirmDialog({ open, title, description, confirmLabel, onClose,
 }) {
   return <Modal
     open={open}
-    onClose={onClose}
+    onClose={pending ? () => undefined : onClose}
     title={title}
     description="请确认本次操作"
-    footer={<><Button variant="secondary" onClick={onClose} disabled={pending}>取消</Button><Button variant={danger ? 'danger' : 'primary'} icon={danger ? <Trash2 size={16} /> : undefined} onClick={onConfirm} disabled={pending}>{pending ? '正在处理...' : confirmLabel}</Button></>}
+    footer={<><Button variant="secondary" onClick={onClose} disabled={pending}>取消</Button><Button variant={danger ? 'danger' : 'primary'} icon={pending ? <LoaderCircle className="spin" size={16} /> : danger ? <Trash2 size={16} /> : undefined} onClick={onConfirm} disabled={pending}>{pending ? pendingLabel : confirmLabel}</Button></>}
   >
     <div className={`confirm-dialog-message ${danger ? 'is-danger' : 'is-primary'}`}>
       <span className="confirm-dialog-icon">{danger ? <TriangleAlert size={22} /> : <Info size={22} />}</span>
@@ -102,6 +103,17 @@ export function PageState({ loading, error, empty, emptyText = '暂无数据', c
   if (error) return <Alert tone="danger" title="数据加载失败">{error instanceof Error ? error.message : String(error)}</Alert>;
   if (empty) return <div className="page-state"><Info size={24} /><span>{emptyText}</span></div>;
   return <>{children}</>;
+}
+
+export function Pagination({ page, pageSize, total, onPageChange }: {
+  page: number; pageSize: number; total: number; onPageChange: (page: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (total <= pageSize) return null;
+  return <div className="pagination" aria-label="分页">
+    <span>第 {page} / {pages} 页，共 {total} 项</span>
+    <div><Button variant="secondary" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>上一页</Button><Button variant="secondary" disabled={page >= pages} onClick={() => onPageChange(page + 1)}>下一页</Button></div>
+  </div>;
 }
 
 export function Field({ label, required, help, children }: PropsWithChildren<{ label: string; required?: boolean; help?: string }>) {
